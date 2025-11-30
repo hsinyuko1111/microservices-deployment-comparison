@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences
+POST,POST /product,CatchResponseError('Status 503'),2661
+POST,POST /shopping-carts/{id}/checkout,CatchResponseError('Status 500'),4197

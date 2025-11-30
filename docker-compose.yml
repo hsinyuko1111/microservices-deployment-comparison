@@ -1,0 +1,109 @@
+services:
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"    # AMQP port
+      - "15672:15672"  # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microservices-network
+
+  # Product Service
+  product-service:
+    build:
+      context: ./services/product-service
+      dockerfile: Dockerfile
+    container_name: product-service
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      LOG_LEVEL: "info"
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Product Service Bad (50% failure rate)
+  product-service-bad:
+    build:
+      context: ./services/product-service-bad
+      dockerfile: Dockerfile
+    container_name: product-service-bad
+    ports:
+      - "8083:8080"  # Different external port, same internal port
+    environment:
+      PORT: "8080"
+      LOG_LEVEL: "info"
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Credit Card Authorizer Service
+  credit-card-authorizer:
+    build:
+      context: ./services/credit-card-authorizer
+      dockerfile: Dockerfile
+    container_name: credit-card-authorizer
+    ports:
+      - "8082:8082"
+    environment:
+      PORT: "8082"
+      LOG_LEVEL: "info"
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Shopping Cart Service
+  shopping-cart-service:
+    build:
+      context: ./services/shopping-cart-service
+      dockerfile: Dockerfile
+    container_name: shopping-cart-service
+    ports:
+      - "8081:8081"
+    environment:
+      PORT: "8081"
+      LOG_LEVEL: "info"
+      CCA_SERVICE_URL: "http://credit-card-authorizer:8082"
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+      RABBITMQ_QUEUE: "warehouse_orders"
+      CHANNEL_POOL_SIZE: "10"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      credit-card-authorizer:
+        condition: service_started
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Warehouse Consumer
+  warehouse-consumer:
+    build:
+      context: ./services/warehouse-consumer
+      dockerfile: Dockerfile
+    container_name: warehouse-consumer
+    environment:
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+      RABBITMQ_QUEUE: "warehouse_orders"
+      NUM_WORKERS: "5"
+      LOG_LEVEL: "info"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+networks:
+  microservices-network:
+    driver: bridge
