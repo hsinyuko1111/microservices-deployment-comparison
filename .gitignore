@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+
+localstack-data/
+localstack-volume/
+
 # C extensions
 *.so
 
