@@ -1,5 +1,43 @@
+# docker-compose.yml
+# Local development environment that mirrors AWS deployment
+#
+# Architecture:
+#   Nginx (ALB) -> Services -> RabbitMQ -> Warehouse
+#
+# Usage:
+#   make local-up    # Start all services
+#   make local-down  # Stop all services
+#   make local-test  # Run load tests
+
 services:
-  # RabbitMQ Message Broker
+  # ===========================================================================
+  # LOAD BALANCER (Simulates AWS ALB)
+  # ===========================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-alb
+    ports:
+      - "80:80"       # Main traffic (matches ALB)
+      - "8090:8090"   # Nginx status for metrics
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - product-service
+      - product-service-bad
+      - shopping-cart-service
+      - credit-card-authorizer
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ===========================================================================
+  # MESSAGE BROKER
+  # ===========================================================================
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -17,14 +55,18 @@ services:
     networks:
       - microservices-network
 
-  # Product Service
+  # ===========================================================================
+  # MICROSERVICES
+  # ===========================================================================
+  
+  # Product Service (Good)
   product-service:
     build:
       context: ./services/product-service
       dockerfile: Dockerfile
     container_name: product-service
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     environment:
       PORT: "8080"
       LOG_LEVEL: "info"
@@ -32,14 +74,14 @@ services:
       - microservices-network
     restart: unless-stopped
 
-  # Product Service Bad (50% failure rate)
+  # Product Service (Bad - 50% failure rate)
   product-service-bad:
     build:
       context: ./services/product-service-bad
       dockerfile: Dockerfile
     container_name: product-service-bad
-    ports:
-      - "8083:8080"  # Different external port, same internal port
+    expose:
+      - "8080"
     environment:
       PORT: "8080"
       LOG_LEVEL: "info"
@@ -53,8 +95,8 @@ services:
       context: ./services/credit-card-authorizer
       dockerfile: Dockerfile
     container_name: credit-card-authorizer
-    ports:
-      - "8082:8082"
+    expose:
+      - "8082"
     environment:
       PORT: "8082"
       LOG_LEVEL: "info"
@@ -68,12 +110,12 @@ services:
       context: ./services/shopping-cart-service
       dockerfile: Dockerfile
     container_name: shopping-cart-service
-    ports:
-      - "8081:8081"
+    expose:
+      - "8081"
     environment:
       PORT: "8081"
       LOG_LEVEL: "info"
-      CCA_SERVICE_URL: "http://credit-card-authorizer:8082"
+      CCA_SERVICE_URL: "http://nginx-alb:80"
       RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
       RABBITMQ_QUEUE: "warehouse_orders"
       CHANNEL_POOL_SIZE: "10"

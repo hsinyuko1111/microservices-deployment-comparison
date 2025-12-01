@@ -1,0 +1,55 @@
+# docker-compose.localstack.yml
+# LocalStack Pro with ECS Docker Mode enabled
+#
+# Prerequisites:
+#   - LocalStack Pro license (student/trial)
+#   - Set LOCALSTACK_AUTH_TOKEN environment variable
+#
+# Usage:
+#   export LOCALSTACK_AUTH_TOKEN=your-token-here
+#   make localstack-up
+
+services:
+  localstack:
+    image: localstack/localstack-pro:latest
+    container_name: localstack
+    ports:
+      - "4566:4566"             # LocalStack Gateway
+      - "4510-4559:4510-4559"   # External services port range
+      - "443:443"               # HTTPS
+      - "53:53"                 # DNS
+      - "53:53/udp"             # DNS UDP
+    environment:
+      # Auth
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
+      
+      # Core settings
+      - DEBUG=1
+      - PERSISTENCE=1
+      
+      # ECS Docker Mode - THIS IS THE KEY SETTING
+      - ECS_DOCKER_FLAGS=-e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1
+      - LAMBDA_DOCKER_FLAGS=-e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test -e AWS_DEFAULT_REGION=us-east-1
+      
+      # Network settings for container communication
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - MAIN_CONTAINER_NAME=localstack
+      
+      # DNS settings
+      - DNS_ADDRESS=127.0.0.1
+      
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./localstack-data:/var/lib/localstack"
+    networks:
+      - localstack-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+networks:
+  localstack-network:
+    driver: bridge  
